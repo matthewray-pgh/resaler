@@ -31,4 +31,8 @@ export const api = {
 
   // eBay
   getEbayComps: (query)        => request(`/ebay/search?q=${encodeURIComponent(query)}`),
+
+  // Listing generator (Claude)
+  generateListing:  (form)     => request("/listing/generate", { method: "POST", body: JSON.stringify(form) }),
+  parseListingText: (text)     => request("/listing/parse",    { method: "POST", body: JSON.stringify({ text }) }),
 };

@@ -14,6 +14,7 @@ import session from "express-session";
 import cors from "cors";
 import MacBid, { } from "macbid-ts-api";
 import { searchActiveListings } from "./ebay.mjs";
+import { generateListing, parseListingText } from "./claude.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -248,6 +249,38 @@ app.get("/api/ebay/search", ensureAuthenticated, async (req, res) => {
 
   try {
     const result = await searchActiveListings(q);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Listing Generator Routes (Claude) ───────────────────────────────────────
+
+/**
+ * POST /api/listing/generate
+ * Generates an eBay title/description + pricing strategy from a filled-out
+ * listing form. Gated behind Mac.bid auth (shared Anthropic API quota).
+ */
+app.post("/api/listing/generate", ensureAuthenticated, async (req, res) => {
+  try {
+    const result = await generateListing(req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/listing/parse
+ * Extracts listing form fields from pasted Mac.bid listing text.
+ */
+app.post("/api/listing/parse", ensureAuthenticated, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: "Field 'text' is required" });
+
+  try {
+    const result = await parseListingText(text);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

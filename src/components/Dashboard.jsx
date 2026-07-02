@@ -2,10 +2,12 @@ import { useState } from "react";
 import WatchlistTab from "./WatchlistTab";
 import AuctionsTab from "./AuctionsTab";
 import SettingsTab from "./SettingsTab";
+import ListingGenerator from "./listing/ListingGenerator";
 
 const TABS = [
   { id: "watchlist", label: "Watchlist" },
   { id: "auctions", label: "Browse Auctions" },
+  { id: "listing", label: "Listing Generator" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -51,6 +53,7 @@ export default function Dashboard({ onLogout }) {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {tab === "watchlist" && <WatchlistTab />}
         {tab === "auctions" && <AuctionsTab />}
+        {tab === "listing" && <ListingGenerator isAuthenticated />}
         {tab === "settings" && <SettingsTab />}
       </main>
     </div>

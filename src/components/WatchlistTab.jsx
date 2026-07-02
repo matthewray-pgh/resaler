@@ -9,7 +9,8 @@ import { analyzeLot } from "../utils/profitCalc";
 const SORTS = {
   margin: (a, b) => b._margin - a._margin,
   profit: (a, b) => b._netProfit - a._netProfit,
-  closing: (a, b) => (a._daysLeft ?? Infinity) - (b._daysLeft ?? Infinity),
+  closingAsc: (a, b) => (a._closeTime ?? Infinity) - (b._closeTime ?? Infinity),
+  closingDesc: (a, b) => (b._closeTime ?? -Infinity) - (a._closeTime ?? -Infinity),
   nameAsc: (a, b) => a._name.localeCompare(b._name),
   nameDesc: (a, b) => b._name.localeCompare(a._name),
 };
@@ -38,7 +39,8 @@ export default function WatchlistTab() {
     const analyzed = items.map(item => {
       const a = analyzeLot(item);
       const name = item.product_name ?? item.title ?? "";
-      return { item, _margin: a.margin, _netProfit: a.netProfit, _daysLeft: a.daysLeft, _name: name };
+      const closeTime = item.expected_close_date ? new Date(item.expected_close_date).getTime() : null;
+      return { item, _margin: a.margin, _netProfit: a.netProfit, _closeTime: closeTime, _name: name };
     });
     analyzed.sort(SORTS[sortBy]);
 
@@ -94,7 +96,8 @@ export default function WatchlistTab() {
         >
           <option value="margin">Sort: Margin</option>
           <option value="profit">Sort: Net profit</option>
-          <option value="closing">Sort: Closing soon</option>
+          <option value="closingAsc">Sort: Closing soonest</option>
+          <option value="closingDesc">Sort: Closing latest</option>
           <option value="nameAsc">Sort: Name A→Z</option>
           <option value="nameDesc">Sort: Name Z→A</option>
         </select>

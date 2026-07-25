@@ -13,7 +13,6 @@ import express from "express";
 import session from "express-session";
 import cors from "cors";
 import MacBid, { } from "macbid-ts-api";
-import { searchActiveListings } from "./ebay.mjs";
 import { generateListing, parseListingText } from "./claude.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -230,26 +229,6 @@ app.get("/api/active", ensureAuthenticated, async (req, res) => {
     req.session.authState = api.getAuthState();
 
     res.json({ active: data ?? [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── eBay Routes ─────────────────────────────────────────────────────────────
-
-/**
- * GET /api/ebay/search?q=...
- * Looks up current active eBay listings for a query (Browse API — asking
- * prices, not sold prices). Gated behind Mac.bid auth so a public deployment
- * can't be used by strangers to burn through our shared eBay API quota.
- */
-app.get("/api/ebay/search", ensureAuthenticated, async (req, res) => {
-  const { q } = req.query;
-  if (!q) return res.status(400).json({ error: "Query parameter 'q' is required" });
-
-  try {
-    const result = await searchActiveListings(q);
-    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

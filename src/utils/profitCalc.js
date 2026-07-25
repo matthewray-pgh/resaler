@@ -1,16 +1,19 @@
+import { loadSettings } from "./settings";
+
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const BUYER_PREMIUM_PCT  = 0.18;  // Mac.bid buyer's premium
+export const BUYER_PREMIUM_PCT  = 0.18;  // Mac.bid buyer's premium (used unless a lot's own auction overrides it)
 export const EBAY_FEE_PCT       = 0.13;  // eBay final value fee (~13%)
 export const SHIP_SUPPLY_COST   = 8;     // Avg packaging + label cost
 export const TARGET_MARGIN_PCT  = 25;    // Minimum acceptable margin
 
-export const TRANSFER_FEE = 10; // Charged unless the lot is already at a no-fee pickup location
-export const NO_TRANSFER_FEE_LOCATIONS = ["Monroeville", "Pittsburgh Mills"];
+// Defaults for the Settings > Transfer & Fees section
+export const DEFAULT_TRANSFER_FEE = 10;
+export const DEFAULT_NO_TRANSFER_FEE_LOCATIONS = ["Monroeville", "Pittsburgh Mills"];
 
-function needsTransferFee(warehouseLocation) {
+function needsTransferFee(warehouseLocation, noFeeLocations) {
   const loc = (warehouseLocation ?? "").toLowerCase();
-  return !NO_TRANSFER_FEE_LOCATIONS.some(name => loc.includes(name.toLowerCase()));
+  return !noFeeLocations.some(name => loc.includes(name.toLowerCase()));
 }
 
 // Conservative eBay resale multiplier vs. retail price, by condition
@@ -40,10 +43,20 @@ export function analyzeLot(item, overrideSalePrice) {
   const isEstimated   = overrideSalePrice == null;
 
   // Transfer fee applies unless the lot is already sitting at a no-fee location
-  const transferFee = needsTransferFee(item.warehouse_location) ? TRANSFER_FEE : 0;
+  const { transferFee: transferFeeAmount, noTransferFeeLocations } = loadSettings();
+  const transferFee = needsTransferFee(item.warehouse_location, noTransferFeeLocations ?? DEFAULT_NO_TRANSFER_FEE_LOCATIONS)
+    ? (transferFeeAmount ?? DEFAULT_TRANSFER_FEE)
+    : 0;
+
+  // Mac.bid returns real per-auction overrides for some lots (buyers_premium_override,
+  // lot_fee_override) — use those when present instead of our flat defaults.
+  const buyerPremiumPct = item.buyers_premium_override != null
+    ? item.buyers_premium_override / 100
+    : BUYER_PREMIUM_PCT;
+  const lotFee = item.lot_fee_override ?? 0;
 
   // Total cost if you win at current bid
-  const totalCost = currentBid * (1 + BUYER_PREMIUM_PCT) + transferFee;
+  const totalCost = currentBid * (1 + buyerPremiumPct) + transferFee + lotFee;
 
   // Selling costs
   const sellCosts = estimatedSale * EBAY_FEE_PCT + SHIP_SUPPLY_COST;
@@ -53,10 +66,10 @@ export function analyzeLot(item, overrideSalePrice) {
   const margin    = estimatedSale > 0 ? (netProfit / estimatedSale) * 100 : 0;
   const roi       = totalCost > 0 ? (netProfit / totalCost) * 100 : 0;
 
-  // Maximum bid to hit target margin (backed out of the flat transfer fee too)
+  // Maximum bid to hit target margin (backed out of the flat transfer + lot fees too)
   const targetNet  = estimatedSale * (1 - EBAY_FEE_PCT) - SHIP_SUPPLY_COST;
   const maxBid     = Math.max(
-    (targetNet * (1 - TARGET_MARGIN_PCT / 100) - transferFee) / (1 + BUYER_PREMIUM_PCT),
+    (targetNet * (1 - TARGET_MARGIN_PCT / 100) - transferFee - lotFee) / (1 + buyerPremiumPct),
     0
   );
 
@@ -72,6 +85,8 @@ export function analyzeLot(item, overrideSalePrice) {
     estimatedSale,
     isEstimated,
     transferFee,
+    lotFee,
+    buyerPremiumPct,
     totalCost,
     sellCosts,
     netProfit,

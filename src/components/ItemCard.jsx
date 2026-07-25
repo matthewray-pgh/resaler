@@ -1,10 +1,18 @@
-import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { faMagnifyingGlass, faArrowUpRightFromSquare } from "@fortawesome/free-solid-svg-icons";
 import { analyzeLot, getRating, formatCurrency, formatPct } from "../utils/profitCalc";
-import { api } from "../hooks/useApi";
 
 const HIGH_RISK = ["Clothing", "Shoes", "Jewelry", "Printer"];
+
+function ebaySearchUrl(query) {
+  const params = new URLSearchParams({ _nkw: query, LH_Sold: "0", _sop: "15" });
+  return `https://www.ebay.com/sch/i.html?${params.toString()}`;
+}
+
+function macBidLotUrl(item) {
+  if (!item.auction_number || !item.lot_number) return null;
+  return `https://www.mac.bid/auction/${item.auction_number}/lot/${item.lot_number}`;
+}
 
 function StatBlock({ label, value, valueClass = "", align = "left", badge = null }) {
   return (
@@ -34,7 +42,7 @@ function TransferFeeBadge({ fee }) {
   if (!fee) return null;
   return (
     <span
-      title="Added because this lot isn't at Monroeville or Pittsburgh Mills"
+      title="This lot isn't at one of your configured no-fee pickup locations (see Settings)"
       className="px-1 py-px rounded text-[9px] font-bold bg-accent-amber/15 text-accent-amber border border-accent-amber/30"
     >
       +{formatCurrency(fee)} xfer
@@ -42,9 +50,20 @@ function TransferFeeBadge({ fee }) {
   );
 }
 
+function LotFeeBadge({ fee }) {
+  if (!fee) return null;
+  return (
+    <span
+      title="Mac.bid's own lot fee for this auction"
+      className="px-1 py-px rounded text-[9px] font-bold bg-accent-blue/15 text-accent-blue border border-accent-blue/30"
+    >
+      +{formatCurrency(fee)} lot fee
+    </span>
+  );
+}
+
 export default function ItemCard({ item, variant = "card" }) {
-  const [ebay, setEbay] = useState(null); // null | { loading } | { data } | { error }
-  const a       = analyzeLot(item, ebay?.data?.medianPrice ?? undefined);
+  const a       = analyzeLot(item);
   const rating  = getRating(a.margin);
   const isRisky = HIGH_RISK.some(c => (item.category ?? "").includes(c));
 
@@ -52,16 +71,8 @@ export default function ItemCard({ item, variant = "card" }) {
     : a.daysLeft === 0 ? "Closes today"
     : `${a.daysLeft}d left`;
 
-  async function checkEbay() {
-    setEbay({ loading: true });
-    try {
-      const query = item.product_name ?? item.title ?? "";
-      const data = await api.getEbayComps(query);
-      setEbay({ data });
-    } catch (err) {
-      setEbay({ error: err.message });
-    }
-  }
+  const ebayUrl = ebaySearchUrl(item.product_name ?? item.title ?? "");
+  const macBidUrl = macBidLotUrl(item);
 
   if (variant === "list") {
     return (
@@ -90,16 +101,30 @@ export default function ItemCard({ item, variant = "card" }) {
             </p>
           </div>
 
-          <button
-            onClick={checkEbay}
-            title="Check eBay listings"
-            className="btn-ghost text-xs px-2 py-1.5 shrink-0 flex items-center gap-1.5"
-          >
-            <FontAwesomeIcon icon={faMagnifyingGlass} className="w-3 h-3" />
-            <span className="hidden md:inline">
-              {ebay?.loading ? "Checking…" : ebay?.data ? "Refresh" : "Check eBay"}
-            </span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {macBidUrl && (
+              <a
+                href={macBidUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View on Mac.bid"
+                className="btn-ghost text-xs px-2 py-1.5 flex items-center gap-1.5"
+              >
+                <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="w-3 h-3" />
+                <span className="hidden md:inline">Mac.bid</span>
+              </a>
+            )}
+            <a
+              href={ebayUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Search eBay for this item"
+              className="btn-ghost text-xs px-2 py-1.5 flex items-center gap-1.5"
+            >
+              <FontAwesomeIcon icon={faMagnifyingGlass} className="w-3 h-3" />
+              <span className="hidden md:inline">Search eBay</span>
+            </a>
+          </div>
         </div>
 
         {/* Stats row */}
@@ -107,7 +132,7 @@ export default function ItemCard({ item, variant = "card" }) {
           <StatBlock label="Retail"      value={formatCurrency(item.retail_price)} />
           <StatBlock label="Bid"         value={formatCurrency(item.winning_bid_amount)} />
           <StatBlock
-            label={a.isEstimated ? "Est. sale" : "Sale (live)"}
+            label="Est. sale"
             value={formatCurrency(a.estimatedSale)}
             valueClass="text-slate-300"
             badge={<SourceBadge isEstimated={a.isEstimated} />}
@@ -115,7 +140,10 @@ export default function ItemCard({ item, variant = "card" }) {
           <StatBlock
             label="Total cost"
             value={formatCurrency(a.totalCost)}
-            badge={<TransferFeeBadge fee={a.transferFee} />}
+            badge={<>
+              <TransferFeeBadge fee={a.transferFee} />
+              <LotFeeBadge fee={a.lotFee} />
+            </>}
           />
           <StatBlock
             label="Net profit"
@@ -126,17 +154,9 @@ export default function ItemCard({ item, variant = "card" }) {
           <StatBlock label="Max bid" value={formatCurrency(a.maxBid)} valueClass="text-accent-blue" />
         </div>
 
-        {/* Bid competition + eBay lookup status */}
+        {/* Bid competition */}
         <div className="flex items-center justify-between text-xs text-slate-500">
           <span>{item.total_bids ?? 0} bids · {item.unique_bidders ?? 0} bidders · {formatPct(a.bidRatio)} of retail</span>
-          {ebay?.error && <span className="text-accent-red">eBay lookup failed: {ebay.error}</span>}
-          {ebay?.data && (
-            <span>
-              {ebay.data.medianPrice != null
-                ? `${ebay.data.count} active eBay listings`
-                : "No active eBay listings found"}
-            </span>
-          )}
         </div>
       </div>
     );
@@ -184,7 +204,7 @@ export default function ItemCard({ item, variant = "card" }) {
         <StatBlock label="Retail price"    value={formatCurrency(item.retail_price)} />
         <StatBlock label="Current bid"     value={formatCurrency(item.winning_bid_amount)} />
         <StatBlock
-          label={a.isEstimated ? "Est. eBay sale" : "eBay sale (live)"}
+          label="Est. eBay sale"
           value={formatCurrency(a.estimatedSale)}
           valueClass="text-slate-300"
           badge={<SourceBadge isEstimated={a.isEstimated} />}
@@ -218,33 +238,28 @@ export default function ItemCard({ item, variant = "card" }) {
         <span>{formatPct(a.bidRatio)} of retail</span>
       </div>
 
-      {/* eBay live lookup (active listings, not sold comps) */}
-      <div className="border-t border-surface-500 pt-2">
-        {!ebay && (
-          <button
-            onClick={checkEbay}
-            className="btn-ghost text-xs w-full flex items-center justify-center gap-1.5"
+      {/* External links */}
+      <div className="border-t border-surface-500 pt-2 flex gap-2">
+        {macBidUrl && (
+          <a
+            href={macBidUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-ghost text-xs flex-1 flex items-center justify-center gap-1.5"
           >
-            <FontAwesomeIcon icon={faMagnifyingGlass} className="w-3 h-3" />
-            Check eBay listings
-          </button>
+            <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="w-3 h-3" />
+            View on Mac.bid
+          </a>
         )}
-        {ebay?.loading && (
-          <div className="text-xs text-slate-500 text-center py-1">Checking eBay…</div>
-        )}
-        {ebay?.error && (
-          <div className="text-xs text-accent-red text-center py-1">eBay lookup failed: {ebay.error}</div>
-        )}
-        {ebay?.data && (
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>
-              {ebay.data.medianPrice != null
-                ? `eBay active listings (${ebay.data.count}) — median above`
-                : "No active listings found."}
-            </span>
-            <button onClick={checkEbay} className="text-accent-blue hover:underline">Refresh</button>
-          </div>
-        )}
+        <a
+          href={ebayUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-ghost text-xs flex-1 flex items-center justify-center gap-1.5"
+        >
+          <FontAwesomeIcon icon={faMagnifyingGlass} className="w-3 h-3" />
+          Search eBay
+        </a>
       </div>
     </div>
   );

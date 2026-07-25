@@ -3,14 +3,9 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  // Served at https://<user>.github.io/Resaler/ — must match the repo name.
+  base: "/Resaler/",
   server: {
     port: 5173,
-    proxy: {
-      // All /api calls are transparently forwarded to Express
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
-      },
-    },
   },
 });

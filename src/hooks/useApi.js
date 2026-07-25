@@ -1,35 +1,20 @@
 /**
- * useApi — thin wrapper around fetch calls to our Express backend.
- * All Mac.bid API calls go through here.
+ * useApi — the app's data access surface. Backed directly by the Mac.bid
+ * API from the browser (see ../lib/macbidClient); no server involved.
  */
 
-const BASE = "/api";
-
-async function request(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || `Request failed: ${res.status}`);
-  return json;
-}
+import { macbid } from "../lib/macbidClient";
 
 export const api = {
   // Auth
-  checkStatus:  ()             => request("/auth/status"),
-  login:        (email, pw)    => request("/auth/login",  { method: "POST", body: JSON.stringify({ email, password: pw }) }),
-  verify:       (code)         => request("/auth/verify", { method: "POST", body: JSON.stringify({ code }) }),
-  logout:       ()             => request("/auth/logout", { method: "POST" }),
+  checkStatus:  ()             => macbid.checkStatus(),
+  login:        (email, pw)    => macbid.login(email, pw),
+  verify:       (code)         => macbid.verify(code),
+  logout:       ()             => macbid.logout(),
 
   // Data
-  getWatchlist: ()             => request("/watchlist"),
-  getLocations: ()             => request("/locations"),
-  getAuctions:  (locationId)   => request(`/auctions?locationId=${locationId}`),
-  getActive:    ()             => request("/active"),
-
-  // Listing generator (Claude)
-  generateListing:  (form)     => request("/listing/generate", { method: "POST", body: JSON.stringify(form) }),
-  parseListingText: (text)     => request("/listing/parse",    { method: "POST", body: JSON.stringify({ text }) }),
+  getWatchlist: ()             => macbid.getWatchlist(),
+  getLocations: ()             => macbid.getLocations(),
+  getAuctions:  (locationId)   => macbid.getAuctions(locationId),
+  getActive:    ()             => macbid.getActive(),
 };

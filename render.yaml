@@ -14,3 +14,5 @@ services:
         sync: false
       - key: EBAY_CLIENT_SECRET
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

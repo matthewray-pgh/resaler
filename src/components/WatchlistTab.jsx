@@ -1,10 +1,22 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTableCellsLarge, faList } from "@fortawesome/free-solid-svg-icons";
+import { faTableCellsLarge, faList, faArrowsRotate } from "@fortawesome/free-solid-svg-icons";
 import { api } from "../hooks/useApi";
 import { useSettings } from "../hooks/useSettings";
 import ItemCard from "./ItemCard";
 import { analyzeLot } from "../utils/profitCalc";
+
+function lotKey(item) {
+  return item.id ?? `${item.auction_number}-${item.lot_number}`;
+}
+
+// Mac.bid's watchlist endpoint can return the same lot more than once
+// (e.g. when it's both watched and actively bid on) — collapse those.
+function dedupeLots(items) {
+  const seen = new Map();
+  for (const item of items) seen.set(lotKey(item), item);
+  return [...seen.values()];
+}
 
 const SORTS = {
   margin: (a, b) => b._margin - a._margin,
@@ -21,16 +33,20 @@ export default function WatchlistTab() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("margin");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchWatchlist = useCallback(({ silent = false } = {}) => {
+    if (silent) setRefreshing(true); else setLoading(true);
+    setError(null);
+    return api.getWatchlist()
+      .then(res => setItems(dedupeLots(res.watchlist ?? [])))
+      .catch(err => setError(err.message))
+      .finally(() => { silent ? setRefreshing(false) : setLoading(false); });
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    api.getWatchlist()
-      .then(res => { if (!cancelled) setItems(res.watchlist ?? []); })
-      .catch(err => { if (!cancelled) setError(err.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    fetchWatchlist();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { sorted, summary } = useMemo(() => {
@@ -102,33 +118,45 @@ export default function WatchlistTab() {
           <option value="nameDesc">Sort: Name Z→A</option>
         </select>
 
-        <div className="flex items-center rounded-lg border border-surface-500 overflow-hidden">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => updateSettings({ watchlistView: "card" })}
-            title="Card view"
-            aria-label="Card view"
-            aria-pressed={settings.watchlistView === "card"}
-            className={`px-3 py-1.5 transition-colors ${
-              settings.watchlistView === "card"
-                ? "bg-accent-blue text-white"
-                : "text-slate-400 hover:bg-surface-600 hover:text-slate-100"
-            }`}
+            onClick={() => fetchWatchlist({ silent: true })}
+            disabled={refreshing}
+            title="Refresh watchlist"
+            className="btn-ghost text-xs px-2.5 py-1.5 flex items-center gap-1.5"
           >
-            <FontAwesomeIcon icon={faTableCellsLarge} className="w-3.5 h-3.5" />
+            <FontAwesomeIcon icon={faArrowsRotate} className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">{refreshing ? "Refreshing…" : "Refresh"}</span>
           </button>
-          <button
-            onClick={() => updateSettings({ watchlistView: "list" })}
-            title="List view"
-            aria-label="List view"
-            aria-pressed={settings.watchlistView === "list"}
-            className={`px-3 py-1.5 transition-colors ${
-              settings.watchlistView === "list"
-                ? "bg-accent-blue text-white"
-                : "text-slate-400 hover:bg-surface-600 hover:text-slate-100"
-            }`}
-          >
-            <FontAwesomeIcon icon={faList} className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="flex items-center rounded-lg border border-surface-500 overflow-hidden">
+            <button
+              onClick={() => updateSettings({ watchlistView: "card" })}
+              title="Card view"
+              aria-label="Card view"
+              aria-pressed={settings.watchlistView === "card"}
+              className={`px-3 py-1.5 transition-colors ${
+                settings.watchlistView === "card"
+                  ? "bg-accent-blue text-white"
+                  : "text-slate-400 hover:bg-surface-600 hover:text-slate-100"
+              }`}
+            >
+              <FontAwesomeIcon icon={faTableCellsLarge} className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => updateSettings({ watchlistView: "list" })}
+              title="List view"
+              aria-label="List view"
+              aria-pressed={settings.watchlistView === "list"}
+              className={`px-3 py-1.5 transition-colors ${
+                settings.watchlistView === "list"
+                  ? "bg-accent-blue text-white"
+                  : "text-slate-400 hover:bg-surface-600 hover:text-slate-100"
+              }`}
+            >
+              <FontAwesomeIcon icon={faList} className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -139,7 +167,7 @@ export default function WatchlistTab() {
       }>
         {sorted.map(item => (
           <ItemCard
-            key={item.id ?? `${item.auction_number}-${item.lot_number}`}
+            key={lotKey(item)}
             item={item}
             variant={settings.watchlistView}
           />

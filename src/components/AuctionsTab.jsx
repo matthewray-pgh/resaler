@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowsRotate } from "@fortawesome/free-solid-svg-icons";
 import { api } from "../hooks/useApi";
 import { useSettings } from "../hooks/useSettings";
 import { getLocationName, sortLocationsByName } from "../utils/locations";
@@ -13,6 +15,7 @@ export default function AuctionsTab() {
 
   const [auctions, setAuctions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -35,16 +38,19 @@ export default function AuctionsTab() {
     return () => { cancelled = true; };
   }, [settings.enabledLocationIds]);
 
-  useEffect(() => {
-    if (!locationId) return;
-    let cancelled = false;
-    setLoading(true);
+  const fetchAuctions = useCallback(({ silent = false } = {}) => {
+    if (!locationId) return Promise.resolve();
+    if (silent) setRefreshing(true); else setLoading(true);
     setError(null);
-    api.getAuctions(locationId)
-      .then(res => { if (!cancelled) setAuctions(res.auctions ?? []); })
-      .catch(err => { if (!cancelled) setError(err.message); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return api.getAuctions(locationId)
+      .then(res => setAuctions(res.auctions ?? []))
+      .catch(err => setError(err.message))
+      .finally(() => { silent ? setRefreshing(false) : setLoading(false); });
+  }, [locationId]);
+
+  useEffect(() => {
+    fetchAuctions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId]);
 
   return (
@@ -71,9 +77,20 @@ export default function AuctionsTab() {
           )}
         </div>
 
-        {!loading && !error && (
-          <div className="text-sm text-slate-500">{auctions.length} lots</div>
-        )}
+        <div className="flex items-center gap-3">
+          {!loading && !error && (
+            <div className="text-sm text-slate-500">{auctions.length} lots</div>
+          )}
+          <button
+            onClick={() => fetchAuctions({ silent: true })}
+            disabled={refreshing || loading || !locationId}
+            title="Refresh auctions"
+            className="btn-ghost text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+          >
+            <FontAwesomeIcon icon={faArrowsRotate} className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">{refreshing ? "Refreshing…" : "Refresh"}</span>
+          </button>
+        </div>
       </div>
 
       {loading ? (

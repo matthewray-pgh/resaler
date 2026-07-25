@@ -5,6 +5,8 @@ const KEY = "resaler:settings";
 const DEFAULTS = {
   enabledLocationIds: null,
   watchlistView: "card", // "card" | "list"
+  transferFee: 10, // flat $ charged for lots not already at a no-fee pickup location
+  noTransferFeeLocations: ["Monroeville", "Pittsburgh Mills"], // matched against item.warehouse_location
 };
 
 export function loadSettings() {
